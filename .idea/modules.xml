@@ -3,6 +3,8 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/JPyBridge.iml" filepath="$PROJECT_DIR$/JPyBridge.iml" />
+      <module fileurl="file://$PROJECT_DIR$/Testing/Testing.iml" filepath="$PROJECT_DIR$/Testing/Testing.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../i4Platform/i4Utils/i4Utils.iml" filepath="$PROJECT_DIR$/../i4Platform/i4Utils/i4Utils.iml" />
     </modules>
   </component>
 </project>
