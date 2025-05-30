@@ -1,4 +1,5 @@
 import illa4257.jpybridge.JPyBridge;
+import illa4257.jpybridge.PyObject;
 
 public class Main {
     public static void main(final String[] args) throws Exception {
@@ -7,6 +8,8 @@ public class Main {
         final Process p = pb.start();
         final JPyBridge b = new JPyBridge(p.getInputStream(), p.getOutputStream());
 
-        System.out.println(b.run("return 4 ** 2").getClass());
+        final PyObject o = (PyObject) b.call(null, "object");
+        System.out.println(o);
+
     }
 }

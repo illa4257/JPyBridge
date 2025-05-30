@@ -1,8 +1,29 @@
 import threading, typing, sys
+import traceback
 
+
+def test():
+    sys.stderr.write("GGGGG\n")
+    sys.stderr.flush()
 
 def __get_by_key(dictionary, v):
     return next((k for k, v in dictionary.items() if v == v), None)
+
+def REFLECTION_CALL(func, args: list):
+    e = 'func('
+    if len(args) > 0:
+        e += 'args[0]'
+        for i in range(1, len(args)):
+            e += f', args[{i}]'
+    return eval(e + ')')
+
+class JavaObject:
+    def __init__(self, bridge: '__Bridge', java_id: int):
+        self.__bridge = bridge
+        self.__id = java_id
+
+    def __getattr__(self, item):
+        pass
 
 class __Bridge:
     def __init__(self, input_stream: typing.BinaryIO, output_stream: typing.BinaryIO):
@@ -11,6 +32,7 @@ class __Bridge:
 
         self.out_locker = threading.Lock()
 
+        self.__objects = {}
         self.__lockers = {}
         self.threads = {}
 
@@ -26,10 +48,19 @@ class __Bridge:
             def run(self):
                 c = int.from_bytes(b.inputStream.read(1), 'big')
 
-                code = None
+                d1 = None
+                throw = False
+                result = None
 
-                if c == 5: # EXEC
-                    code = b.inputStream.read(int.from_bytes(b.inputStream.read(4), 'big')).decode("utf-8")
+                if c == 4: # CALL
+                    obj = b.readObject()
+                    name = b.inputStream.read(int.from_bytes(b.inputStream.read(4), 'big')).decode("utf-8")
+                    args = []
+                    for n in range(int.from_bytes(b.inputStream.read(4), 'big')):
+                        args.append(b.readObject())
+                    d1 = [ obj, name, args ]
+                elif c == 5: # EXEC
+                    d1 = b.inputStream.read(int.from_bytes(b.inputStream.read(4), 'big')).decode("utf-8")
                 else:
                     sys.stderr.write(f'Unknown code: {c}\n')
                     sys.stderr.flush()
@@ -37,16 +68,26 @@ class __Bridge:
                 with self.cond:
                     self.cond.notify_all()
 
-                throw = False
-                result = None
-                try:
-                    e = {}
-                    exec(code, e)
-                    if 'result' in e:
-                        result = e['result']
-                except:
-                    throw = True
-                    result = sys.exc_info()[0]
+                if c == 4:
+                    try:
+                        if d1[0] is None:
+                            result = REFLECTION_CALL(eval(d1[1]), d1[2])
+                        else:
+                            result = REFLECTION_CALL(eval(f'd1[0].{d1[1]}'), d1[2])
+                    except:
+                        throw = True
+                        result = sys.exc_info()[0]
+                        sys.stderr.write(traceback.format_exc() + "\n")
+                        sys.stderr.flush()
+                elif c == 5:
+                    try:
+                        e = {}
+                        exec(d1, e)
+                        if 'result' in e:
+                            result = e['result']
+                    except:
+                        throw = True
+                        result = sys.exc_info()[0]
 
                 if self.counter == 1:
                     b.threads.pop(self.thread_id)
@@ -73,6 +114,18 @@ class __Bridge:
                 sys.stderr.write("This thread still exists!\n")
                 sys.stderr.flush()
 
+    def readObject(self):
+        c = int.from_bytes(self.inputStream.read(1), 'big')
+        if c == 0:
+            return None
+        if c == 9:
+            return self.inputStream.read(int.from_bytes(self.inputStream.read(4), 'big')).decode('utf-8')
+        if c == 11:
+            return self.__objects[int.from_bytes(self.inputStream.read(8), 'big')]
+        sys.stderr.write(f'[JPyBridge] Unknown type code: {c}\n')
+        sys.stderr.flush()
+        return None
+
     def writeObject(self, o):
         if o is None:
             self.outputStream.write(b'\x00')
@@ -88,12 +141,14 @@ class __Bridge:
             self.outputStream.write(o.to_bytes(8, 'big'))
             return
         if type(o) == str:
-            self.outputStream.write(b'\x08')
+            self.outputStream.write(b'\x09')
             o = o.encode("utf-8")
             self.outputStream.write(len(o).to_bytes(4, 'big'))
             self.outputStream.write(o)
             return
-        self.outputStream.write(b'\x00')
+        self.__objects[id(o)] = o
+        self.outputStream.write(b'\x0b')
+        self.outputStream.write(id(o).to_bytes(8, 'big'))
         sys.stderr.write(f'[JPyBridge] Unknown type: {o}\n')
         sys.stderr.flush()
 
