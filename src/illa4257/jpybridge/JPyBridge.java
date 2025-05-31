@@ -13,7 +13,8 @@ import static illa4257.i4Utils.logger.Level.WARN;
 
 public class JPyBridge {
     /// Operations
-    private static final byte RETURN = 0, THROW = 1, GET = 2, SET = 3, CALL = 4, EXEC = 5, RELEASE = 6;
+    private static final byte RETURN = 0, THROW = 1, GET = 2, DICT_GET = 3, SET = 4, DICT_SET = 5, CALL = 6,
+            EXEC = 7, RELEASE = 8;
 
     /// Types
     private static final byte NONE = 0, BOOL = 1,
@@ -72,12 +73,34 @@ public class JPyBridge {
         if (object instanceof Boolean) {
             os.write(BOOL);
             os.write((boolean) object ? 1 : 0);
+            return;
+        }
+        if (object instanceof Byte) {
+            os.write(BYTE);
+            os.write((byte) object);
+            return;
+        }
+        if (object instanceof Short) {
+            os.write(SHORT);
+            IO.writeBEShort(os, (short) object);
+            return;
+        }
+        if (object instanceof Integer) {
+            os.write(INT);
+            IO.writeBEInteger(os, (int) object);
+            return;
+        }
+        if (object instanceof Long) {
+            os.write(INT);
+            IO.writeBELong(os, (long) object);
+            return;
         }
         if (object instanceof String) {
             os.write(STRING);
             final byte[] b = ((String) object).getBytes(StandardCharsets.UTF_8);
             IO.writeBEInteger(os, b.length);
             os.write(b);
+            return;
         }
         if (object instanceof PyObject) {
             os.write(PYTHON_OBJECT);
@@ -166,5 +189,147 @@ public class JPyBridge {
 
     public Object call(final Object object, final String name, Object... args) throws IOException, InterruptedException {
         return callArr(object, name, args);
+    }
+
+    public Object get(final Object object, final String name) throws IOException, InterruptedException {
+        Object l = locker.get(Thread.currentThread().getId());
+        final boolean first;
+        if (l == null) {
+            first = true;
+            locker.put(Thread.currentThread().getId(), l = new Object());
+        } else
+            first = false;
+        synchronized (l) {
+            synchronized (os) {
+                IO.writeBELong(os, Thread.currentThread().getId());
+                os.write(GET);
+                writeObject(object);
+                final byte[] n = name.getBytes(StandardCharsets.UTF_8);
+                IO.writeBEInteger(os, n.length);
+                os.write(n);
+                os.flush();
+            }
+            try {
+                while (true) {
+                    l.wait();
+                    final byte c = IO.readByte(is);
+                    if (c == RETURN)
+                        return readObject();
+                    if (c == THROW)
+                        throw new RuntimeException(String.valueOf(readObject()));
+                    throw new IOException("Unknown code: " + c);
+                }
+            } finally {
+                synchronized (is) { is.notifyAll(); }
+                if (first)
+                    locker.remove(Thread.currentThread().getId());
+            }
+        }
+    }
+
+    public Object dictGet(final Object array, final Object name) throws IOException, InterruptedException {
+        Object l = locker.get(Thread.currentThread().getId());
+        final boolean first;
+        if (l == null) {
+            first = true;
+            locker.put(Thread.currentThread().getId(), l = new Object());
+        } else
+            first = false;
+        synchronized (l) {
+            synchronized (os) {
+                IO.writeBELong(os, Thread.currentThread().getId());
+                os.write(DICT_GET);
+                writeObject(array);
+                writeObject(name);
+                os.flush();
+            }
+            try {
+                while (true) {
+                    l.wait();
+                    final byte c = IO.readByte(is);
+                    if (c == RETURN)
+                        return readObject();
+                    if (c == THROW)
+                        throw new RuntimeException(String.valueOf(readObject()));
+                    throw new IOException("Unknown code: " + c);
+                }
+            } finally {
+                synchronized (is) { is.notifyAll(); }
+                if (first)
+                    locker.remove(Thread.currentThread().getId());
+            }
+        }
+    }
+
+    public Object set(final Object object, final String name, final Object value) throws IOException, InterruptedException {
+        Object l = locker.get(Thread.currentThread().getId());
+        final boolean first;
+        if (l == null) {
+            first = true;
+            locker.put(Thread.currentThread().getId(), l = new Object());
+        } else
+            first = false;
+        synchronized (l) {
+            synchronized (os) {
+                IO.writeBELong(os, Thread.currentThread().getId());
+                os.write(SET);
+                writeObject(object);
+                final byte[] n = name.getBytes(StandardCharsets.UTF_8);
+                IO.writeBEInteger(os, n.length);
+                os.write(n);
+                writeObject(value);
+                os.flush();
+            }
+            try {
+                while (true) {
+                    l.wait();
+                    final byte c = IO.readByte(is);
+                    if (c == RETURN)
+                        return readObject();
+                    if (c == THROW)
+                        throw new RuntimeException(String.valueOf(readObject()));
+                    throw new IOException("Unknown code: " + c);
+                }
+            } finally {
+                synchronized (is) { is.notifyAll(); }
+                if (first)
+                    locker.remove(Thread.currentThread().getId());
+            }
+        }
+    }
+
+    public Object dictSet(final Object array, final Object name, final Object value) throws IOException, InterruptedException {
+        Object l = locker.get(Thread.currentThread().getId());
+        final boolean first;
+        if (l == null) {
+            first = true;
+            locker.put(Thread.currentThread().getId(), l = new Object());
+        } else
+            first = false;
+        synchronized (l) {
+            synchronized (os) {
+                IO.writeBELong(os, Thread.currentThread().getId());
+                os.write(DICT_SET);
+                writeObject(array);
+                writeObject(name);
+                writeObject(value);
+                os.flush();
+            }
+            try {
+                while (true) {
+                    l.wait();
+                    final byte c = IO.readByte(is);
+                    if (c == RETURN)
+                        return readObject();
+                    if (c == THROW)
+                        throw new RuntimeException(String.valueOf(readObject()));
+                    throw new IOException("Unknown code: " + c);
+                }
+            } finally {
+                synchronized (is) { is.notifyAll(); }
+                if (first)
+                    locker.remove(Thread.currentThread().getId());
+            }
+        }
     }
 }

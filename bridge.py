@@ -1,15 +1,28 @@
 import threading, typing, sys
 import traceback
 
+GG = "Hello"
 
 def test():
     sys.stderr.write("GGGGG\n")
     sys.stderr.flush()
 
-def __get_by_key(dictionary, v):
-    return next((k for k, v in dictionary.items() if v == v), None)
+BRIDGE_LOG = True
+
+GET = 2
+DICT_GET = 3
+SET = 4
+DICT_SET = 5
+CALL = 6
+
+EXEC = 7
+
+def __get_by_key(dictionary, val):
+    return next((k for k, v in dictionary.items() if v == val), None)
 
 def REFLECTION_CALL(func, args: list):
+    if type(func) == dict or type(func) == list:
+        return func
     e = 'func('
     if len(args) > 0:
         e += 'args[0]'
@@ -52,14 +65,36 @@ class __Bridge:
                 throw = False
                 result = None
 
-                if c == 4: # CALL
+                if c == GET:
+                    d1 = [
+                        b.readObject(),
+                        b.inputStream.read(int.from_bytes(b.inputStream.read(4), 'big')).decode("utf-8")
+                    ]
+                elif c == DICT_GET:
+                    d1 = [
+                        b.readObject(),
+                        b.readObject()
+                    ]
+                elif c == SET:
+                    d1 = [
+                        b.readObject(),
+                        b.inputStream.read(int.from_bytes(b.inputStream.read(4), 'big')).decode("utf-8"),
+                        b.readObject()
+                    ]
+                elif c == DICT_SET:
+                    d1 = [
+                        b.readObject(),
+                        b.readObject(),
+                        b.readObject()
+                    ]
+                elif c == CALL:
                     obj = b.readObject()
                     name = b.inputStream.read(int.from_bytes(b.inputStream.read(4), 'big')).decode("utf-8")
                     args = []
                     for n in range(int.from_bytes(b.inputStream.read(4), 'big')):
                         args.append(b.readObject())
                     d1 = [ obj, name, args ]
-                elif c == 5: # EXEC
+                elif c == EXEC:
                     d1 = b.inputStream.read(int.from_bytes(b.inputStream.read(4), 'big')).decode("utf-8")
                 else:
                     sys.stderr.write(f'Unknown code: {c}\n')
@@ -68,26 +103,37 @@ class __Bridge:
                 with self.cond:
                     self.cond.notify_all()
 
-                if c == 4:
-                    try:
+                try:
+                    if c == GET:
+                        if d1[0] is None:
+                            result = eval(d1[1])
+                        else:
+                            result = eval(f'd1[0].{d1[1]}')
+                    elif c == DICT_GET:
+                        result = eval(f'd1[0][d1[1]]')
+                    elif c == SET:
+                        if d1[0] is None:
+                            exec(f'{d1[1]} = d1[2]')
+                        else:
+                            exec(f'd1[0].{d1[1]} = d1[2]')
+                    elif c == DICT_SET:
+                        exec(f'd1[0][d1[1]] = d1[2]')
+                    elif c == CALL:
                         if d1[0] is None:
                             result = REFLECTION_CALL(eval(d1[1]), d1[2])
                         else:
                             result = REFLECTION_CALL(eval(f'd1[0].{d1[1]}'), d1[2])
-                    except:
-                        throw = True
-                        result = sys.exc_info()[0]
-                        sys.stderr.write(traceback.format_exc() + "\n")
-                        sys.stderr.flush()
-                elif c == 5:
-                    try:
+                    elif c == EXEC:
                         e = {}
                         exec(d1, e)
                         if 'result' in e:
                             result = e['result']
-                    except:
-                        throw = True
-                        result = sys.exc_info()[0]
+                except:
+                    throw = True
+                    result = sys.exc_info()[0]
+                    if BRIDGE_LOG:
+                        sys.stderr.write(traceback.format_exc() + '\n')
+                        sys.stderr.flush()
 
                 if self.counter == 1:
                     b.threads.pop(self.thread_id)
@@ -116,9 +162,19 @@ class __Bridge:
 
     def readObject(self):
         c = int.from_bytes(self.inputStream.read(1), 'big')
-        if c == 0:
+        if c == 0: # NULL
             return None
-        if c == 9:
+        if c == 1: # BOOL
+            return self.inputStream.read(1) == b'\x01'
+        if c == 2: # BYTE
+            return self.inputStream.read(1)
+        if c == 3: # SHORT
+            return int.from_bytes(self.inputStream.read(2), 'big')
+        if c == 4: # INT
+            return int.from_bytes(self.inputStream.read(4), 'big')
+        if c == 5: # LONG
+            return int.from_bytes(self.inputStream.read(8), 'big')
+        if c == 9: # STR
             return self.inputStream.read(int.from_bytes(self.inputStream.read(4), 'big')).decode('utf-8')
         if c == 11:
             return self.__objects[int.from_bytes(self.inputStream.read(8), 'big')]
@@ -149,8 +205,9 @@ class __Bridge:
         self.__objects[id(o)] = o
         self.outputStream.write(b'\x0b')
         self.outputStream.write(id(o).to_bytes(8, 'big'))
-        sys.stderr.write(f'[JPyBridge] Unknown type: {o}\n')
-        sys.stderr.flush()
+        if BRIDGE_LOG:
+            sys.stderr.write(f'[JPyBridge] Unknown type: {o}\n')
+            sys.stderr.flush()
 
 __is = None
 __out = None
