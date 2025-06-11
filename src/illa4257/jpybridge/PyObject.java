@@ -1,46 +1,54 @@
 package illa4257.jpybridge;
 
-import java.io.IOException;
+import java.lang.reflect.Proxy;
 
-public class PyObject {
-    protected final JPyBridge bridge;
-    protected final long id;
+public interface PyObject {
+    JPyBridge getBridge();
+    long getId();
 
-    public PyObject(final JPyBridge bridge, final long id) {
-        this.bridge = bridge;
-        this.id = id;
+    default String getTypeStr() {
+        return (String) getBridge().get(
+                getBridge().call(null, "type", this),
+                "__name__"
+        );
     }
 
-    public Object callArr(final String name, final Object[] args) throws IOException, InterruptedException {
-        return bridge.callArr(this, name, args);
+    default Object callArr(final String name, final Object[] args) {
+        return getBridge().callArr(this, name, args);
     }
 
-    public Object call(final String name, final Object... args) throws IOException, InterruptedException {
-        return bridge.call(this, name, args);
+    default Object call(final String name, final Object... args) {
+        return getBridge().call(this, name, args);
     }
 
-    public Object getVal(final String name) throws IOException, InterruptedException {
-        return bridge.get(this, name);
+    default Object getVal(final String name) {
+        return getBridge().get(this, name);
     }
 
-    public Object dictGetVal(final Object name) throws IOException, InterruptedException {
-        return bridge.dictGet(this, name);
+    default Object dictGetVal(final Object name) {
+        return getBridge().dictGet(this, name);
     }
 
-    public Object setVal(final String name, final Object value) throws IOException, InterruptedException {
-        return bridge.set(this, name, value);
+    default Object setVal(final String name, final Object value) {
+        return getBridge().set(this, name, value);
     }
 
-    public Object dictSetVal(final Object name, final Object value) throws IOException, InterruptedException {
-        return bridge.dictSet(this, name, value);
+    default Object dictSetVal(final Object name, final Object value) {
+        return getBridge().dictSet(this, name, value);
     }
 
-    @Override
-    public String toString() {
-        try {
-            return (String) call("__str__");
-        } catch (final IOException|InterruptedException ex) {
-            return super.toString();
-        }
+    default boolean contains(final Object o) {
+        return getBridge().contains(this, o);
     }
+
+    @SuppressWarnings("unchecked")
+    default <T> T proxy(final Class<T> interfaceType) {
+        return (T) Proxy.newProxyInstance(
+                interfaceType.getClassLoader(),
+                new Class[] { interfaceType },
+                new PyObjectInvocationHandler(this)
+        );
+    }
+
+    default void release() {}
 }
