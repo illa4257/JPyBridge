@@ -1,7 +1,6 @@
 package illa4257.jpybridge;
 
 import illa4257.i4Utils.io.IO;
-import illa4257.i4Utils.logger.i4Logger;
 
 import java.io.*;
 import java.lang.ref.ReferenceQueue;
@@ -15,8 +14,8 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ThreadLocalRandom;
-
-import static illa4257.i4Utils.logger.Level.WARN;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class JPyBridge implements Closeable {
     /// Operations
@@ -31,7 +30,7 @@ public class JPyBridge implements Closeable {
 
     private static final ThreadLocalRandom RND = ThreadLocalRandom.current();
 
-    public static final i4Logger L = i4Logger.INSTANCE.sub("JPyBridge");
+    public static final Logger L = Logger.getLogger("JPyBridge");
 
     private static final ReferenceQueue<PyObject> monitor = new ReferenceQueue<>();
 
@@ -70,8 +69,8 @@ public class JPyBridge implements Closeable {
                             continue;
                         ref.bridge.releasePyObject(ref.id);
                     }
-                } catch (final Exception ex) {
-                    L.log(ex);
+                } catch (final Throwable ex) {
+                    L.log(Level.SEVERE, null, ex);
                 }
             }
         }.start();
@@ -106,7 +105,7 @@ public class JPyBridge implements Closeable {
             } catch (final Exception ex) {
                 if (ex instanceof EOFException)
                     return;
-                L.log(ex);
+                L.log(Level.SEVERE, null, ex);
             }
         });
         thread.start();
@@ -123,7 +122,7 @@ public class JPyBridge implements Closeable {
             case PYTHON_OBJECT: return new PyObjectImpl(this, IO.readBELong(is));
             case PYTHON_LIST: return new PyList(this, IO.readBELong(is));
             default:
-                i4Logger.INSTANCE.log(WARN, "Unknown type: " + t);
+                L.log(Level.WARNING, "Unknown type: " + t);
                 break;
         }
         return null;
@@ -212,7 +211,6 @@ public class JPyBridge implements Closeable {
                 }
             } catch (final Throwable ex) {
                 synchronized (os) {
-                    L.log(ex);
                     IO.writeBELong(os, Thread.currentThread().getId());
                     os.write(THROW);
                     writeObject(ex);
@@ -509,7 +507,6 @@ public class JPyBridge implements Closeable {
                 os.flush();
             }
         } catch (final Exception ex) {
-            L.log(ex);
             if (ex instanceof RuntimeException)
                 throw (RuntimeException) ex;
             throw new RuntimeException(ex);
