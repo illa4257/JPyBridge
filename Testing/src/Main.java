@@ -34,14 +34,14 @@ public class Main {
                 };
 
                 try {
-                    L.log(Level.INFO, String.valueOf(b.call(o, "__str__")));
+                    L.log(Level.INFO, String.valueOf(b.call(o, "__str__"))); // TEST=2
 
-                    b.run("global TestClass\nclass TestClass:\n\tdef test(self):\n\t\tprint('Hello, world!')");
+                    b.run("global TestClass\nclass TestClass:\n\tdef test(self):\n\t\tprint('Hello, world!')"); // Declare a class
 
-                    final ProxyTest test = ((PyObject) b.run("return TestClass()")).proxy(ProxyTest.class);
-                    test.test();
+                    final ProxyTest test = ((PyObject) b.run("return TestClass()")).proxy(ProxyTest.class); // Make proxy
+                    test.test(); // Prints Hello, world!
 
-                    b.run("raise BaseException('Hello, world!')");
+                    b.run("raise BaseException('Hello, world!')"); // throws BaseException
                 } catch (final Exception ex) {
                     if (ex instanceof PyError)
                         L.log(Level.INFO, ((PyError) ex).formatException());
