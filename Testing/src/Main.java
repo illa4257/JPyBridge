@@ -41,7 +41,7 @@ public class Main {
                     final ProxyTest test = ((PyObject) b.run("return TestClass()")).proxy(ProxyTest.class); // Make proxy
                     test.test(); // Prints Hello, world!
 
-                    b.run("raise BaseException('Hello, world!')"); // throws BaseException
+                    b.run("raise BaseException('Hello, world!')"); // throws PyError
                 } catch (final Exception ex) {
                     if (ex instanceof PyError)
                         L.log(Level.INFO, ((PyError) ex).formatException());
