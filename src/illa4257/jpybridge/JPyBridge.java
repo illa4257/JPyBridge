@@ -1,7 +1,5 @@
 package illa4257.jpybridge;
 
-import illa4257.i4Utils.io.IO;
-
 import java.io.*;
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
@@ -50,6 +48,65 @@ public class JPyBridge implements Closeable {
     }
 
     public static void monitor(final PyObject object) { new PyObjectRef(object); }
+    
+    private static byte readByte(final InputStream is) throws IOException {
+        final int r = is.read();
+        if (r == -1)
+            throw new EOFException("End of stream reached while trying to read a byte.");
+        return (byte) r;
+    }
+
+    private static int readByteI(final InputStream is) throws IOException {
+        final int r = is.read();
+        if (r == -1)
+            throw new EOFException("End of stream reached while trying to read a byte.");
+        return r;
+    }
+
+    private static int readBEInteger(final InputStream stream) throws IOException {
+        return (readByteI(stream) << 24) + (readByteI(stream) << 16) + (readByteI(stream) << 8) + readByteI(stream);
+    }
+
+    private static long readBELong(final InputStream stream) throws IOException {
+        return ((long) readByteI(stream) << 56) +
+                ((long) readByteI(stream) << 48) +
+                ((long) readByteI(stream) << 40) +
+                ((long) readByteI(stream) << 32) +
+                ((long) readByteI(stream) << 24) +
+                ((long) readByteI(stream) << 16) +
+                ((long) readByteI(stream) <<  8) +
+                (long) readByteI(stream);
+    }
+
+    private static byte[] readByteArray(final InputStream stream, final int length) throws IOException {
+        final byte[] array = new byte[length];
+        for (int i = 0; i < array.length; i++)
+            array[i] = readByte(stream);
+        return array;
+    }
+
+    private static void writeBEShort(final OutputStream stream, int number) throws IOException {
+        stream.write(number >> 8);
+        stream.write(number);
+    }
+
+    private static void writeBEInteger(final OutputStream stream, int number) throws IOException {
+        stream.write(number >> 24);
+        stream.write(number >> 16);
+        stream.write(number >> 8);
+        stream.write(number);
+    }
+
+    private static void writeBELong(final OutputStream stream, long number) throws IOException {
+        stream.write((int) (number >> 56));
+        stream.write((int) (number >> 48));
+        stream.write((int) (number >> 40));
+        stream.write((int) (number >> 32));
+        stream.write((int) (number >> 24));
+        stream.write((int) (number >> 16));
+        stream.write((int) (number >> 8));
+        stream.write((int) number);
+    }
 
     static {
         new Thread() {
@@ -97,7 +154,7 @@ public class JPyBridge implements Closeable {
             try {
                 synchronized (is) {
                     while (true) {
-                        final Object l = locker.get(IO.readBELong(is));
+                        final Object l = locker.get(readBELong(is));
                         synchronized (l) { l.notifyAll(); }
                         is.wait();
                     }
@@ -112,15 +169,15 @@ public class JPyBridge implements Closeable {
     }
 
     private Object readObject() throws IOException {
-        final byte t = IO.readByte(is);
+        final byte t = readByte(is);
         switch (t) {
             case NONE: return null;
-            case BOOL: return IO.readByte(is) == 1;
-            case LONG: return IO.readBELong(is);
-            case STRING: return new String(IO.readByteArray(is, IO.readBEInteger(is)), charset);
-            case JAVA_OBJECT: return mappedObjects.get(IO.readBELong(is));
-            case PYTHON_OBJECT: return new PyObjectImpl(this, IO.readBELong(is));
-            case PYTHON_LIST: return new PyList(this, IO.readBELong(is));
+            case BOOL: return readByte(is) == 1;
+            case LONG: return readBELong(is);
+            case STRING: return new String(readByteArray(is, readBEInteger(is)), charset);
+            case JAVA_OBJECT: return mappedObjects.get(readBELong(is));
+            case PYTHON_OBJECT: return new PyObjectImpl(this, readBELong(is));
+            case PYTHON_LIST: return new PyList(this, readBELong(is));
             default:
                 L.log(Level.WARNING, "Unknown type: " + t);
                 break;
@@ -145,29 +202,29 @@ public class JPyBridge implements Closeable {
         }
         if (object instanceof Short) {
             os.write(SHORT);
-            IO.writeBEShort(os, (short) object);
+            writeBEShort(os, (short) object);
             return;
         }
         if (object instanceof Integer) {
             os.write(INT);
-            IO.writeBEInteger(os, (int) object);
+            writeBEInteger(os, (int) object);
             return;
         }
         if (object instanceof Long) {
             os.write(INT);
-            IO.writeBELong(os, (long) object);
+            writeBELong(os, (long) object);
             return;
         }
         if (object instanceof String) {
             os.write(STRING);
             final byte[] b = ((String) object).getBytes(charset);
-            IO.writeBEInteger(os, b.length);
+            writeBEInteger(os, b.length);
             os.write(b);
             return;
         }
         if (object instanceof PyObject) {
             os.write(PYTHON_OBJECT);
-            IO.writeBELong(os, ((PyObject) object).getId());
+            writeBELong(os, ((PyObject) object).getId());
             return;
         }
         while (true) {
@@ -176,7 +233,7 @@ public class JPyBridge implements Closeable {
             if (o != object)
                 continue;
             os.write(JAVA_OBJECT);
-            IO.writeBELong(os, id);
+            writeBELong(os, id);
             break;
         }
     }
@@ -186,8 +243,8 @@ public class JPyBridge implements Closeable {
             throw PyError.of(readObject());
         if (code == CALL) {
             final Object o = readObject();
-            final String n = new String(IO.readByteArray(is, IO.readBEInteger(is)), charset);
-            int argsLen = IO.readBEInteger(is);
+            final String n = new String(readByteArray(is, readBEInteger(is)), charset);
+            int argsLen = readBEInteger(is);
             final ArrayList<Object> args = new ArrayList<>();
             for (; argsLen > 0; argsLen--)
                 args.add(readObject());
@@ -204,14 +261,14 @@ public class JPyBridge implements Closeable {
                 Objects.requireNonNull(m).setAccessible(true);
                 final Object r = m.invoke(o);
                 synchronized (os) {
-                    IO.writeBELong(os, Thread.currentThread().getId());
+                    writeBELong(os, Thread.currentThread().getId());
                     os.write(RETURN);
                     writeObject(r);
                     os.flush();
                 }
             } catch (final Throwable ex) {
                 synchronized (os) {
-                    IO.writeBELong(os, Thread.currentThread().getId());
+                    writeBELong(os, Thread.currentThread().getId());
                     os.write(THROW);
                     writeObject(ex);
                     os.flush();
@@ -236,19 +293,19 @@ public class JPyBridge implements Closeable {
             final boolean first = isFirst.get();
             synchronized (l) {
                 synchronized (os) {
-                    IO.writeBELong(os, Thread.currentThread().getId());
+                    writeBELong(os, Thread.currentThread().getId());
                     os.write(EXEC);
                     final byte[] buff = (
                             "def __rt():\n\t" + String.join("\n\t", code.split("\n")) + "\nresult = __rt()"
                     ).getBytes(charset);
-                    IO.writeBEInteger(os, buff.length);
+                    writeBEInteger(os, buff.length);
                     os.write(buff);
                     os.flush();
                 }
                 try {
                     while (true) {
                         l.wait();
-                        final byte c = IO.readByte(is);
+                        final byte c = readByte(is);
                         if (c == RETURN)
                             return readObject();
                         perform(c);
@@ -274,24 +331,24 @@ public class JPyBridge implements Closeable {
             final boolean first = isFirst.get();
             synchronized (l) {
                 synchronized (os) {
-                    IO.writeBELong(os, Thread.currentThread().getId());
+                    writeBELong(os, Thread.currentThread().getId());
                     os.write(CALL);
                     writeObject(object);
                     final byte[] n = name.getBytes(charset);
-                    IO.writeBEInteger(os, n.length);
+                    writeBEInteger(os, n.length);
                     os.write(n);
                     if (args != null) {
-                        IO.writeBEInteger(os, args.length);
+                        writeBEInteger(os, args.length);
                         for (final Object a : args)
                             writeObject(a);
                     } else
-                        IO.writeBEInteger(os, 0);
+                        writeBEInteger(os, 0);
                     os.flush();
                 }
                 try {
                     while (true) {
                         l.wait();
-                        final byte c = IO.readByte(is);
+                        final byte c = readByte(is);
                         if (c == RETURN)
                             return readObject();
                         perform(c);
@@ -321,18 +378,18 @@ public class JPyBridge implements Closeable {
             final boolean first = isFirst.get();
             synchronized (l) {
                 synchronized (os) {
-                    IO.writeBELong(os, Thread.currentThread().getId());
+                    writeBELong(os, Thread.currentThread().getId());
                     os.write(GET);
                     writeObject(object);
                     final byte[] n = name.getBytes(charset);
-                    IO.writeBEInteger(os, n.length);
+                    writeBEInteger(os, n.length);
                     os.write(n);
                     os.flush();
                 }
                 try {
                     while (true) {
                         l.wait();
-                        final byte c = IO.readByte(is);
+                        final byte c = readByte(is);
                         if (c == RETURN)
                             return readObject();
                         perform(c);
@@ -358,7 +415,7 @@ public class JPyBridge implements Closeable {
             final boolean first = isFirst.get();
             synchronized (l) {
                 synchronized (os) {
-                    IO.writeBELong(os, Thread.currentThread().getId());
+                    writeBELong(os, Thread.currentThread().getId());
                     os.write(DICT_GET);
                     writeObject(array);
                     writeObject(name);
@@ -367,7 +424,7 @@ public class JPyBridge implements Closeable {
                 try {
                     while (true) {
                         l.wait();
-                        final byte c = IO.readByte(is);
+                        final byte c = readByte(is);
                         if (c == RETURN)
                             return readObject();
                         perform(c);
@@ -393,11 +450,11 @@ public class JPyBridge implements Closeable {
             final boolean first = isFirst.get();
             synchronized (l) {
                 synchronized (os) {
-                    IO.writeBELong(os, Thread.currentThread().getId());
+                    writeBELong(os, Thread.currentThread().getId());
                     os.write(SET);
                     writeObject(object);
                     final byte[] n = name.getBytes(charset);
-                    IO.writeBEInteger(os, n.length);
+                    writeBEInteger(os, n.length);
                     os.write(n);
                     writeObject(value);
                     os.flush();
@@ -405,7 +462,7 @@ public class JPyBridge implements Closeable {
                 try {
                     while (true) {
                         l.wait();
-                        final byte c = IO.readByte(is);
+                        final byte c = readByte(is);
                         if (c == RETURN)
                             return readObject();
                         perform(c);
@@ -431,7 +488,7 @@ public class JPyBridge implements Closeable {
             final boolean first = isFirst.get();
             synchronized (l) {
                 synchronized (os) {
-                    IO.writeBELong(os, Thread.currentThread().getId());
+                    writeBELong(os, Thread.currentThread().getId());
                     os.write(DICT_SET);
                     writeObject(array);
                     writeObject(name);
@@ -441,7 +498,7 @@ public class JPyBridge implements Closeable {
                 try {
                     while (true) {
                         l.wait();
-                        final byte c = IO.readByte(is);
+                        final byte c = readByte(is);
                         if (c == RETURN)
                             return readObject();
                         perform(c);
@@ -467,7 +524,7 @@ public class JPyBridge implements Closeable {
             final boolean first = isFirst.get();
             synchronized (l) {
                 synchronized (os) {
-                    IO.writeBELong(os, Thread.currentThread().getId());
+                    writeBELong(os, Thread.currentThread().getId());
                     os.write(CONTAINS);
                     writeObject(array);
                     writeObject(value);
@@ -476,7 +533,7 @@ public class JPyBridge implements Closeable {
                 try {
                     while (true) {
                         l.wait();
-                        final byte c = IO.readByte(is);
+                        final byte c = readByte(is);
                         if (c == RETURN)
                             //noinspection DataFlowIssue
                             return (boolean) readObject();
@@ -501,9 +558,9 @@ public class JPyBridge implements Closeable {
     public void releasePyObject(final long id) {
         try {
             synchronized (os) {
-                IO.writeBELong(os, Thread.currentThread().getId());
+                writeBELong(os, Thread.currentThread().getId());
                 os.write(RELEASE);
-                IO.writeBELong(os, id);
+                writeBELong(os, id);
                 os.flush();
             }
         } catch (final Exception ex) {

@@ -12,7 +12,6 @@
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
-    <orderEntry type="module" module-name="i4Utils" scope="PROVIDED" />
-    <orderEntry type="library" name="Python 3.13 interpreter library" level="application" />
+    <orderEntry type="library" scope="PROVIDED" name="Python 3.13 interpreter library" level="application" />
   </component>
 </module>

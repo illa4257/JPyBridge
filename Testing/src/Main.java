@@ -8,20 +8,13 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 
-import static illa4257.i4Utils.logger.Level.*;
-
 public class Main {
     public static final i4Logger L = new i4Logger("JPyBridge");
 
     public static void main(final String[] args) throws Exception {
-        L.registerHandler(new AnsiColoredPrintStreamLogHandler(System.out));
-        i4Logger.INSTANCE.unregisterAllHandlers().registerHandler(L);
+        L.registerHandler(new AnsiColoredPrintStreamLogHandler(System.out))
+                .inheritGlobalIO();
 
-        System.setOut(L.newPrintStream(INFO));
-        System.setErr(L.newPrintStream(ERROR));
-        Thread.setDefaultUncaughtExceptionHandler((t, e) -> L.log(e));
-
-        final JPyBridge b;
         try (final ServerSocket server = new ServerSocket()) {
             server.bind(new InetSocketAddress("127.0.0.1", 0));
             final ProcessBuilder pb = new ProcessBuilder("python3", "bridge.py", "--con", Integer.toString(server.getLocalPort()))
@@ -29,23 +22,23 @@ public class Main {
             pb.environment().put("PYTHONUNBUFFERED", "true");
             final Process p = pb.start();
             final Socket s = server.accept();
-            b = new JPyBridge(s.getInputStream(), s.getOutputStream(), StandardCharsets.UTF_8, p::destroy);
-        }
+            try (final JPyBridge b = new JPyBridge(s.getInputStream(), s.getOutputStream(), StandardCharsets.UTF_8, p::destroy)) {
+                final Object o = new Object() {
+                    @Override
+                    public String toString() {
+                        return "TEST=" + b.run("return 1 + 1");
+                    }
+                };
 
-        final Object o = new Object() {
-            @Override
-            public String toString() {
-                return "TEST=" + b.run("return 1 + 1");
-            }
-        };
+                try {
+                    System.out.println(b.call(o, "__str__"));
 
-        try (final JPyBridge bridge = b) {
-            try {
-                System.out.println(b.call(o, "__str__"));
-            } catch (final Exception ex) {
-                if (ex instanceof PyError)
-                    System.out.println(((PyError) ex).formatException());
-                L.log(ex);
+                    System.out.println(b.run("raise BaseException('Hello, world!')"));
+                } catch (final Exception ex) {
+                    if (ex instanceof PyError)
+                        System.out.println(((PyError) ex).formatException());
+                    L.log(ex);
+                }
             }
         }
     }
