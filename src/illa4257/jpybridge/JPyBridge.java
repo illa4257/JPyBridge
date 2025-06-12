@@ -7,9 +7,13 @@ import java.io.*;
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ThreadLocalRandom;
 
 import static illa4257.i4Utils.logger.Level.WARN;
@@ -31,6 +35,9 @@ public class JPyBridge implements Closeable {
 
     private static final ReferenceQueue<PyObject> monitor = new ReferenceQueue<>();
 
+    @SuppressWarnings("MismatchedQueryAndUpdateOfCollection")
+    private static final ConcurrentLinkedQueue<PyObjectRef> refs = new ConcurrentLinkedQueue<>();
+
     private static final class PyObjectRef extends WeakReference<PyObject> {
         public final JPyBridge bridge;
         public final long id;
@@ -39,7 +46,7 @@ public class JPyBridge implements Closeable {
             super(object, monitor);
             bridge = object.getBridge();
             id = object.getId();
-            System.out.println("MONITOR " + bridge + " / " + id);
+            refs.add(this);
         }
     }
 
@@ -57,8 +64,8 @@ public class JPyBridge implements Closeable {
                 try {
                     //noinspection InfiniteLoopStatement
                     while (true) {
-                        System.out.println("Monitoring ...");
                         final PyObjectRef ref = (PyObjectRef) monitor.remove();
+                        refs.remove(ref);
                         if (ref.bridge == null || ref.id == -1)
                             continue;
                         ref.bridge.releasePyObject(ref.id);
@@ -79,6 +86,8 @@ public class JPyBridge implements Closeable {
     private final ConcurrentHashMap<Long, Object> locker = new ConcurrentHashMap<>(),
             mappedObjects = new ConcurrentHashMap<>();
 
+    private final ThreadLocal<Boolean> isFirst = new ThreadLocal<>();
+
     public JPyBridge(final InputStream inputStream, final OutputStream outputStream, final Charset charset, final Runnable shutdownHook) {
         is = inputStream;
         os = outputStream;
@@ -97,7 +106,7 @@ public class JPyBridge implements Closeable {
             } catch (final Exception ex) {
                 if (ex instanceof EOFException)
                     return;
-                throw new RuntimeException(ex);
+                L.log(ex);
             }
         });
         thread.start();
@@ -179,11 +188,21 @@ public class JPyBridge implements Closeable {
         if (code == CALL) {
             final Object o = readObject();
             final String n = new String(IO.readByteArray(is, IO.readBEInteger(is)), charset);
-            final int argsLen = IO.readBEInteger(is);
+            int argsLen = IO.readBEInteger(is);
+            final ArrayList<Object> args = new ArrayList<>();
+            for (; argsLen > 0; argsLen--)
+                args.add(readObject());
             synchronized (is) { is.notifyAll(); }
             try {
-                final Method m = o.getClass().getMethod(n);
-                m.setAccessible(true);
+                Method m = null;
+                for (final Method method : Objects.requireNonNull(o).getClass().getMethods())
+                    if (
+                            Modifier.isPublic(method.getModifiers()) &&
+                                    method.getName().equals(n) &&
+                                    method.getParameterCount() == args.size()
+                    )
+                        m = method;
+                Objects.requireNonNull(m).setAccessible(true);
                 final Object r = m.invoke(o);
                 synchronized (os) {
                     IO.writeBELong(os, Thread.currentThread().getId());
@@ -205,15 +224,18 @@ public class JPyBridge implements Closeable {
         throw new IOException("Unknown code: " + code);
     }
 
+    private Object getLocker() {
+        isFirst.set(false);
+        return locker.computeIfAbsent(Thread.currentThread().getId(), ignored -> {
+            isFirst.set(true);
+            return new Object();
+        });
+    }
+
     public Object run(final String code) {
         try {
-            Object l = locker.get(Thread.currentThread().getId());
-            final boolean first;
-            if (l == null) {
-                first = true;
-                locker.put(Thread.currentThread().getId(), l = new Object());
-            } else
-                first = false;
+            final Object l = getLocker();
+            final boolean first = isFirst.get();
             synchronized (l) {
                 synchronized (os) {
                     IO.writeBELong(os, Thread.currentThread().getId());
@@ -250,13 +272,8 @@ public class JPyBridge implements Closeable {
 
     public Object callArr(final Object object, final String name, final Object[] args) {
         try {
-            Object l = locker.get(Thread.currentThread().getId());
-            final boolean first;
-            if (l == null) {
-                first = true;
-                locker.put(Thread.currentThread().getId(), l = new Object());
-            } else
-                first = false;
+            final Object l = getLocker();
+            final boolean first = isFirst.get();
             synchronized (l) {
                 synchronized (os) {
                     IO.writeBELong(os, Thread.currentThread().getId());
@@ -302,13 +319,8 @@ public class JPyBridge implements Closeable {
 
     public Object get(final Object object, final String name) {
         try {
-            Object l = locker.get(Thread.currentThread().getId());
-            final boolean first;
-            if (l == null) {
-                first = true;
-                locker.put(Thread.currentThread().getId(), l = new Object());
-            } else
-                first = false;
+            final Object l = getLocker();
+            final boolean first = isFirst.get();
             synchronized (l) {
                 synchronized (os) {
                     IO.writeBELong(os, Thread.currentThread().getId());
@@ -344,13 +356,8 @@ public class JPyBridge implements Closeable {
 
     public Object dictGet(final Object array, final Object name) {
         try {
-            Object l = locker.get(Thread.currentThread().getId());
-            final boolean first;
-            if (l == null) {
-                first = true;
-                locker.put(Thread.currentThread().getId(), l = new Object());
-            } else
-                first = false;
+            final Object l = getLocker();
+            final boolean first = isFirst.get();
             synchronized (l) {
                 synchronized (os) {
                     IO.writeBELong(os, Thread.currentThread().getId());
@@ -384,13 +391,8 @@ public class JPyBridge implements Closeable {
 
     public Object set(final Object object, final String name, final Object value) {
         try {
-            Object l = locker.get(Thread.currentThread().getId());
-            final boolean first;
-            if (l == null) {
-                first = true;
-                locker.put(Thread.currentThread().getId(), l = new Object());
-            } else
-                first = false;
+            final Object l = getLocker();
+            final boolean first = isFirst.get();
             synchronized (l) {
                 synchronized (os) {
                     IO.writeBELong(os, Thread.currentThread().getId());
@@ -427,13 +429,8 @@ public class JPyBridge implements Closeable {
 
     public Object dictSet(final Object array, final Object name, final Object value) {
         try {
-            Object l = locker.get(Thread.currentThread().getId());
-            final boolean first;
-            if (l == null) {
-                first = true;
-                locker.put(Thread.currentThread().getId(), l = new Object());
-            } else
-                first = false;
+            final Object l = getLocker();
+            final boolean first = isFirst.get();
             synchronized (l) {
                 synchronized (os) {
                     IO.writeBELong(os, Thread.currentThread().getId());
@@ -468,13 +465,8 @@ public class JPyBridge implements Closeable {
 
     public boolean contains(final Object array, final Object value) {
         try {
-            Object l = locker.get(Thread.currentThread().getId());
-            final boolean first;
-            if (l == null) {
-                first = true;
-                locker.put(Thread.currentThread().getId(), l = new Object());
-            } else
-                first = false;
+            final Object l = getLocker();
+            final boolean first = isFirst.get();
             synchronized (l) {
                 synchronized (os) {
                     IO.writeBELong(os, Thread.currentThread().getId());
@@ -488,6 +480,7 @@ public class JPyBridge implements Closeable {
                         l.wait();
                         final byte c = IO.readByte(is);
                         if (c == RETURN)
+                            //noinspection DataFlowIssue
                             return (boolean) readObject();
                         perform(c);
                     }
@@ -510,13 +503,13 @@ public class JPyBridge implements Closeable {
     public void releasePyObject(final long id) {
         try {
             synchronized (os) {
-                System.out.println("Releasing " + id);
                 IO.writeBELong(os, Thread.currentThread().getId());
                 os.write(RELEASE);
                 IO.writeBELong(os, id);
                 os.flush();
             }
         } catch (final Exception ex) {
+            L.log(ex);
             if (ex instanceof RuntimeException)
                 throw (RuntimeException) ex;
             throw new RuntimeException(ex);

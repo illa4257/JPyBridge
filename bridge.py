@@ -51,6 +51,22 @@ class JavaObject:
         self.__bridge = bridge
         self.java_id = java_id
 
+    def call_method_list(self, name: str, args: list|tuple):
+        with self.__bridge.out_locker:
+            self.__bridge.init_operation()
+            self.__bridge.outputStream.write(B_CALL)
+            self.__bridge.write_object(self)
+            b_m = name.encode(self.__bridge.charset)
+            self.__bridge.outputStream.write(len(b_m).to_bytes(4, 'big'))
+            self.__bridge.outputStream.write(b_m)
+            self.__bridge.outputStream.write(len(args).to_bytes(4, 'big'))
+            for arg in args:
+                self.__bridge.write_object(arg)
+        return self.__bridge.wait_response()
+
+    def call_method(self, name: str, *args):
+        return self.call_method_list(name, args)
+
     def __str__(self):
         with self.__bridge.out_locker:
             self.__bridge.init_operation()

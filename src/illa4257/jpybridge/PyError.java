@@ -3,11 +3,13 @@ package illa4257.jpybridge;
 public class PyError extends RuntimeException implements PyObject {
     private final JPyBridge bridge;
     private final long id;
+    public final PyObject original;
 
-    public PyError() { bridge = null; id = -1; }
-    public PyError(final String msg) { super(msg); bridge = null; id = -1; }
-    public PyError(final Throwable cause) { super(cause); bridge = null; id = -1; }
-    public PyError(final PyObject object) { bridge = object.getBridge(); id = object.getId(); JPyBridge.monitor(this); }
+    public PyError() { original = null; bridge = null; id = -1; }
+    public PyError(final String msg) { super(msg); original = null; bridge = null; id = -1; }
+    public PyError(final Throwable cause) { super(cause); original = null; bridge = null; id = -1; }
+    public PyError(final JPyBridge bridge, final long id) { original = null; this.bridge = bridge; this.id = id; JPyBridge.monitor(this); }
+    public PyError(final PyObject object) { original = object; bridge = object.getBridge(); id = object.getId(); }
 
     public static PyError of(final Object object) {
         if (object == null)
