@@ -281,7 +281,7 @@ class Bridge:
                     result = reflection_call(eval(f'd1[0].{d1[1]}'), d1[2])
             elif c == EXEC:
                 e = {}
-                exec(d1, e)
+                exec(d1, globals(), e)
                 if 'result' in e:
                     result = e['result']
         except:
