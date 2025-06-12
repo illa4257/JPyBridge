@@ -1,5 +1,6 @@
 import illa4257.jpybridge.JPyBridge;
 import illa4257.jpybridge.PyError;
+import illa4257.jpybridge.PyObject;
 
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
@@ -10,6 +11,10 @@ import java.util.logging.Logger;
 
 public class Main {
     public static final Logger L = Logger.getLogger("JPyBridge");
+
+    public interface ProxyTest {
+        void test();
+    }
 
     public static void main(final String[] args) throws Exception {
         L.log(Level.INFO, "Starting ...");
@@ -30,6 +35,11 @@ public class Main {
 
                 try {
                     L.log(Level.INFO, String.valueOf(b.call(o, "__str__")));
+
+                    b.run("global TestClass\nclass TestClass:\n\tdef test(self):\n\t\tprint('Hello, world!')");
+
+                    final ProxyTest test = ((PyObject) b.run("return TestClass()")).proxy(ProxyTest.class);
+                    test.test();
 
                     b.run("raise BaseException('Hello, world!')");
                 } catch (final Exception ex) {
