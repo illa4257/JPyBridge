@@ -7,14 +7,14 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class Main {
-    public static final i4Logger L = new i4Logger("JPyBridge");
+    public static final Logger L = Logger.getLogger("JPyBridge");
 
     public static void main(final String[] args) throws Exception {
-        L.registerHandler(new AnsiColoredPrintStreamLogHandler(System.out))
-                .inheritGlobalIO();
-
+        L.log(Level.INFO, "Starting ...");
         try (final ServerSocket server = new ServerSocket()) {
             server.bind(new InetSocketAddress("127.0.0.1", 0));
             final ProcessBuilder pb = new ProcessBuilder("python3", "bridge.py", "--con", Integer.toString(server.getLocalPort()))
@@ -31,13 +31,13 @@ public class Main {
                 };
 
                 try {
-                    System.out.println(b.call(o, "__str__"));
+                    L.log(Level.INFO, String.valueOf(b.call(o, "__str__")));
 
-                    System.out.println(b.run("raise BaseException('Hello, world!')"));
+                    b.run("raise BaseException('Hello, world!')");
                 } catch (final Exception ex) {
                     if (ex instanceof PyError)
-                        System.out.println(((PyError) ex).formatException());
-                    L.log(ex);
+                        L.log(Level.INFO, ((PyError) ex).formatException());
+                    L.log(Level.SEVERE, null, ex);
                 }
             }
         }
