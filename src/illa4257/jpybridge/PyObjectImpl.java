@@ -13,5 +13,5 @@ public class PyObjectImpl implements PyObject {
     @Override public boolean contains(Object o) { return PyObject.super.contains(o); }
     @Override public JPyBridge getBridge() { return bridge; }
     @Override public long getId() { return id; }
-    @Override public String toString() { return (String) call("__str__"); }
+    @Override public String toString() { return (String) call("__str__", null, 0); }
 }

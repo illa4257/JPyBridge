@@ -8,6 +8,7 @@ import java.lang.reflect.Modifier;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -325,7 +326,9 @@ public class JPyBridge implements Closeable {
         }
     }
 
-    public Object callArr(final Object object, final String name, final Object[] args) {
+    public Object callArr(final Object object, final String name, final Map<String, Object> kwargs, final int offset, final Object[] args) {
+        if (offset < 0)
+            throw new IllegalArgumentException("Offset cannot be negative! " + offset);
         try {
             final Object l = getLocker();
             final boolean first = isFirst.get();
@@ -334,13 +337,24 @@ public class JPyBridge implements Closeable {
                     writeBELong(os, Thread.currentThread().getId());
                     os.write(CALL);
                     writeObject(object);
-                    final byte[] n = name.getBytes(charset);
+                    byte[] n = name.getBytes(charset);
                     writeBEInteger(os, n.length);
                     os.write(n);
                     if (args != null) {
-                        writeBEInteger(os, args.length);
-                        for (final Object a : args)
-                            writeObject(a);
+                        writeBEInteger(os, Math.max(args.length - offset, 0));
+                        for (int i = offset; i < args.length; i++)
+                            writeObject(args[i]);
+                    } else
+                        writeBEInteger(os, 0);
+                    if (kwargs != null && !kwargs.isEmpty()) {
+                        writeBEInteger(os, kwargs.size());
+                        for (final Map.Entry<String, Object> e : kwargs.entrySet()) {
+                            System.out.println(e.getKey() + " = " + e.getValue());
+                            n = e.getKey().getBytes(StandardCharsets.UTF_8);
+                            writeBEInteger(os, n.length);
+                            os.write(n);
+                            writeObject(e.getValue());
+                        }
                     } else
                         writeBEInteger(os, 0);
                     os.flush();
@@ -368,8 +382,8 @@ public class JPyBridge implements Closeable {
         }
     }
 
-    public Object call(final Object object, final String name, Object... args) {
-        return callArr(object, name, args);
+    public Object call(final Object object, final String name, final Map<String, Object> kwargs, final int offset, Object... args) {
+        return callArr(object, name, kwargs, offset, args);
     }
 
     public Object get(final Object object, final String name) {

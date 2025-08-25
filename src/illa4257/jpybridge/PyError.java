@@ -26,15 +26,15 @@ public class PyError extends RuntimeException implements PyObject {
 
     public String formatException() {
         return bridge != null && id != -1 ?
-                (String) bridge.call("", "join", bridge.call(null, "traceback.format_exception", this))
+                (String) bridge.call("", "join", null, 0, bridge.call(null, "traceback.format_exception", null, 0, this))
                 : null;
     }
 
     @Override
     public String getMessage() {
         if (bridge != null && id != -1)
-            return bridge.get(bridge.call(null, "type", this), "__name__") + ": " +
-                    bridge.call(null, "str", this);
+            return bridge.get(bridge.call(null, "type", null, 0, this), "__name__") + ": " +
+                    bridge.call(null, "str", null, 0, this);
         return super.getMessage();
     }
 }

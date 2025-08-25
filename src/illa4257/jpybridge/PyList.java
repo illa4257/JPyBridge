@@ -7,11 +7,11 @@ public class PyList extends PyObjectImpl implements List<Object> {
     public PyList(final JPyBridge bridge, final long id) { super(bridge, id); }
 
     @Override public boolean isEmpty() { return size() == 0; }
-    @Override public int size() { return (int) getBridge().call(null, "len", this); }
+    @Override public int size() { return (int) getBridge().call(null, "len", null, 0, this); }
 
     @Override
     public Iterator<Object> iterator() {
-        final PyObject iter = (PyObject) getBridge().call(null, "iter", this);
+        final PyObject iter = (PyObject) getBridge().call(null, "iter", null, 0, this);
         return new Iterator<Object>() {
             private boolean noHas = true, end = false;
             private Object val = null;
@@ -22,7 +22,7 @@ public class PyList extends PyObjectImpl implements List<Object> {
                     return false;
                 if (noHas)
                     try {
-                        val = getBridge().call(null, "next", iter);
+                        val = getBridge().call(null, "next", null, 0, iter);
                         noHas = false;
                     } catch (final Exception ex) {
                         end = true;
@@ -42,7 +42,7 @@ public class PyList extends PyObjectImpl implements List<Object> {
                     throw new NoSuchElementException();
                 if (noHas)
                     try {
-                        return getBridge().call(null, "next", iter);
+                        return getBridge().call(null, "next", null, 0, iter);
                     } catch (final Exception ex) {
                         end = true;
                         if (ex instanceof PyError) {
@@ -70,8 +70,8 @@ public class PyList extends PyObjectImpl implements List<Object> {
         return ts;
     }
 
-    @Override public boolean add(final Object object) { call("append", object); return true; }
-    @Override public boolean remove(final Object o) { call("remove", o); return true; }
+    @Override public boolean add(final Object object) { call("append", null, 0, object); return true; }
+    @Override public boolean remove(final Object o) { call("remove", null, 0, o); return true; }
 
     @Override
     public boolean addAll(Collection collection) {
@@ -83,7 +83,7 @@ public class PyList extends PyObjectImpl implements List<Object> {
         return false;
     }
 
-    @Override public void clear() { call("clear"); }
+    @Override public void clear() { call("clear", null, 0); }
     @Override public Object get(final int i) { return dictGetVal(i); }
     @Override public Object set(int i, Object object) { return dictSetVal(i, object); }
 
@@ -94,7 +94,7 @@ public class PyList extends PyObjectImpl implements List<Object> {
 
     @Override
     public Object remove(final int i) {
-        call("pop", i);
+        call("pop", null, i);
         return true;
     }
 

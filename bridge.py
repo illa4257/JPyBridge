@@ -36,7 +36,7 @@ global __is, __out
 def __get_by_key(dictionary, val):
     return next((k for k, v in dictionary.items() if v == val), None)
 
-def reflection_call(func, args: list):
+def reflection_call(func, args: list, kwargs: dict):
     if type(func) in BRIDGE_BASE_TYPES:
         return func
     e = 'func('
@@ -44,6 +44,14 @@ def reflection_call(func, args: list):
         e += 'args[0]'
         for i in range(1, len(args)):
             e += f', args[{i}]'
+    if len(kwargs) > 0:
+        if len(args) > 0:
+            e += ', '
+        for index, key in enumerate(kwargs):
+            if index > 0:
+                e += f', {key}=kwargs[\"{key}\"]'
+            else:
+                e += f'{key}=kwargs[\"{key}\"]'
     return eval(e + ')')
 
 class JavaObject:
@@ -243,7 +251,11 @@ class Bridge:
             args = []
             for n in range(int.from_bytes(self.inputStream.read(4), 'big')):
                 args.append(self.read_object())
-            d1 = [ obj, name, args ]
+            kwargs = {}
+            for n in range(int.from_bytes(self.inputStream.read(4), 'big')):
+                k = self.inputStream.read(int.from_bytes(self.inputStream.read(4), 'big')).decode(self.charset)
+                kwargs[k] = self.read_object()
+            d1 = [ obj, name, args, kwargs ]
         elif c == EXEC:
             d1 = self.inputStream.read(int.from_bytes(self.inputStream.read(4), 'big')).decode(self.charset)
         elif c == RELEASE:
@@ -276,9 +288,9 @@ class Bridge:
                 exec(f'd1[0][d1[1]] = d1[2]')
             elif c == CALL:
                 if d1[0] is None:
-                    result = reflection_call(eval(d1[1]), d1[2])
+                    result = reflection_call(eval(d1[1]), d1[2], d1[3])
                 else:
-                    result = reflection_call(eval(f'd1[0].{d1[1]}'), d1[2])
+                    result = reflection_call(eval(f'd1[0].{d1[1]}'), d1[2], d1[3])
             elif c == EXEC:
                 e = {}
                 exec(d1, globals(), e)

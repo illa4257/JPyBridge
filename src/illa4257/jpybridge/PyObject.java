@@ -1,6 +1,8 @@
 package illa4257.jpybridge;
 
 import java.lang.reflect.Proxy;
+import java.util.Map;
+import java.util.function.Function;
 
 public interface PyObject {
     JPyBridge getBridge();
@@ -8,17 +10,17 @@ public interface PyObject {
 
     default String getTypeStr() {
         return (String) getBridge().get(
-                getBridge().call(null, "type", this),
+                getBridge().call(null, "type", null, 0, this),
                 "__name__"
         );
     }
 
-    default Object callArr(final String name, final Object[] args) {
-        return getBridge().callArr(this, name, args);
+    default Object callArr(final String name, final Map<String, Object> kwargs, final int offset, final Object[] args) {
+        return getBridge().callArr(this, name, kwargs, offset, args);
     }
 
-    default Object call(final String name, final Object... args) {
-        return getBridge().call(this, name, args);
+    default Object call(final String name, final Map<String, Object> kwargs, final int offset, final Object... args) {
+        return getBridge().call(this, name, kwargs, offset, args);
     }
 
     default Object getVal(final String name) {
@@ -46,8 +48,31 @@ public interface PyObject {
         return (T) Proxy.newProxyInstance(
                 interfaceType.getClassLoader(),
                 new Class[] { interfaceType },
-                new PyObjectInvocationHandler(this)
+                new PyObjectInvocationHandler(this, interfaceType)
         );
+    }
+
+    @SuppressWarnings("unchecked")
+    default <T> T proxy(final Object def, final Class<T> interfaceType) {
+        final PyObjectInvocationHandler invocationHandler = new PyObjectInvocationHandler(this, interfaceType);
+        invocationHandler.def = def;
+        return (T) Proxy.newProxyInstance(
+                interfaceType.getClassLoader(),
+                new Class[] { interfaceType },
+                invocationHandler
+        );
+    }
+
+    @SuppressWarnings("unchecked")
+    default <T> T proxy(final Function<T, Object> def, final Class<T> interfaceType) {
+        final PyObjectInvocationHandler invocationHandler = new PyObjectInvocationHandler(this, interfaceType);
+        final T p = (T) Proxy.newProxyInstance(
+                interfaceType.getClassLoader(),
+                new Class[] { interfaceType },
+                invocationHandler
+        );
+        invocationHandler.def = def.apply(p);
+        return p;
     }
 
     default void release() {}
